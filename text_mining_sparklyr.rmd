@@ -1,0 +1,124 @@
+---
+title: "Text Mining with sparklyr"
+author: 'Gaurav Tople, Sai Vineeth'
+date: "4/19/2020"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document:
+    fig_height: 5
+    fig_width: 8
+    keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE,
+                      fig.align = 'center',
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+
+```{r load library}
+library(sparklyr)
+library(dplyr)
+```
+
+Task 1:
+
+a. Establish spark connection in RStudio (libraries: sparklyr, dplyr)
+```{r}
+spark_install(version = "2.1.0")
+
+sc <- spark_connect(master = "local", version = "2.1.0")
+```
+b. Load the text file "My_old_man.txt" into spark 
+```{r}
+file_path <- paste0(getwd(), "/My_old_man.txt")
+
+myoldman <-  spark_read_text(sc, "myoldman", file_path) 
+```
+
+c. Remove empty lines 
+```{r}
+myoldman<- myoldman %>%
+  filter(nchar(line) > 0)
+```
+
+d. Remove punctuation
+```{r}
+myoldman <- myoldman %>%
+  mutate(line = regexp_replace(line, "[_\"\'():;,.!?\\-]", " ")) 
+```
+
+e. Separate each word using Spark API ft_tokenizer
+```{r}
+word_list <- myoldman %>%
+  ft_tokenizer(input_col = "line",
+               output_col = "word_list")
+
+```
+
+f. Remove stop words (e.g., I, me, my, .)
+```{r}
+wo_stop <- word_list %>%
+  ft_stop_words_remover(input_col = "word_list",
+                        output_col = "wo_stop_words")
+
+```
+g. Unnesting the tokens into their own row using explode; filtering the result with ncahr(word) > 1
+```{r}
+exploded <- wo_stop %>%
+  mutate(word = explode(wo_stop_words))
+
+all_words <- exploded %>%
+  filter(nchar(word) > 1)
+```
+
+h. Cache the result into Spark memory using compute()
+```{r}
+all_words <- all_words %>%
+  compute("all_words")
+```
+
+Task 2:
+
+a. Generate a list of (word, count) in descending order of count
+```{r}
+word_count <- all_words %>%
+  group_by(word) %>%
+  tally() %>%
+  arrange(desc(n))
+
+```
+
+b. Create a list of the first 20 words with counts
+```{r}
+first_20_word_count <- head(word_count,20)
+print(first_20_word_count)
+```
+
+c. How many distinct words are there in the list?
+```{r}
+distinct_word_count <- all_words %>%
+     select(word) %>%
+     distinct() %>%
+     count()
+
+print(distinct_word_count)
+```
+Task 3:
+a. The code (your code should be tested in RStudio before submission)
+
+b. The results: The list of the first 20 words with counts and the total number of the distinct words in the list.
+Ans: List of the first 20 words with count
+```{r}
+print(as.data.frame(first_20_word_count))
+```
+
+Total number of distinct words in the list:
+```{r}
+print(distinct_word_count)
+```
